@@ -382,7 +382,7 @@ runs:
 
         if [ "${{ inputs.nethunter }}" == "true" ]; then
             echo "::group::Initializing Kali NetHunter"
-             aria2c https://github.com/dabao1955/kernel_build_action/raw/main/nethunter/config.sh -o nconfig.sh &&  bash nconfig.sh arch/${{ inputs.arch }}/configs/${{ inputs.config }} -w
+             aria2c https://github.com/dabao1955/kernel_build_action/raw/main/nethunter/config.sh -o nconfig.sh &&  bash nconfig.sh "$CONFIG_FILE" -w
              if [ ${{ inputs.nethunter-patch }} = true ]; then
                  #aria2c https://github.com/dabao1955/kernel_build_action/raw/main/nethunter/add-wifi-injection.patch && git apply --whitespace=nowarn add-wifi-injection.patch
                  aria2c https://github.com/dabao1955/kernel_build_action/raw/main/nethunter/fix-ath9k-naming-conflict.patch && git apply fix-ath9k-naming-conflict.patch
@@ -416,7 +416,7 @@ runs:
          fi
 
         if [ "${{ inputs.disable-lto }}" == "true" ]; then
-            if grep -q "LTO" "arch/${{ inputs.arch }}/configs/${{ inputs.config }}"; then
+            if grep -q "LTO" "$CONFIG_FILE"; then
                 sed -i 's/CONFIG_LTO=y/CONFIG_LTO=n/' "$CONFIG_FILE"
                 sed -i 's/CONFIG_LTO_CLANG=y/CONFIG_LTO_CLANG=n/' "$CONFIG_FILE"
                 sed -i 's/CONFIG_THINLTO=y/CONFIG_THINLTO=n/' "$CONFIG_FILE"
