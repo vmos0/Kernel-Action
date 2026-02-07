@@ -144,7 +144,6 @@ runs:
     - name: Build Kernel
       shell: bash
       run: |
-        #!/bin/bash
         set -euo pipefail
 
         error() {
@@ -157,6 +156,21 @@ runs:
                 "$@"
             else
                 sudo "$@"
+            fi
+        }
+
+        normalize_toolchain_dir() {
+            local dir_path=$1
+            local dir_name=$2
+
+            if [ ! -d "$dir_path/bin" ]; then
+                echo "Normalizing $dir_name directory structure..."
+                for nested_dir in "$dir_path"/*/*; do
+                    if [ -d "$nested_dir" ]; then
+                        mv "$nested_dir"/* "$dir_path/" 2>/dev/null || true
+                        break
+                    fi
+                done
             fi
         }
 
@@ -181,16 +195,20 @@ runs:
             esac
         }
 
-        if [[ ${GITHUB_ACTIONS} != "true" || ${OSTYPE} != "linux-gnu" || ! -f /bin/apt ]]; then
-            error "This action is intended for Debian-based runners."
+        if [[ ${GITHUB_ACTIONS} != "true" || ${OSTYPE} != "linux-gnu" || ( ! -f /bin/apt && ! -f /bin/pacman ) ]]; then
+            error "This action requires GitHub Actions Linux runners (Debian-based or ArchLinux-based). Current: OSTYPE=${OSTYPE}, GITHUB_ACTIONS=${GITHUB_ACTIONS}"
         fi
 
-        echo "::group::Installing Building Depend Packages"
-        SU apt-get update
-        SU apt-get install --no-install-recommends -y \
-            binutils git make bc bison openssl curl zip kmod cpio flex libelf-dev \
-            libssl-dev libtfm-dev libc6-dev device-tree-compiler ca-certificates \
-            python3 xz-utils aria2 build-essential ccache pigz parallel jq opam libpcre3-dev
+        echo "::group::Installing dependency packages"
+        if [ -f /bin/apt ]; then
+            SU apt-get update
+            SU apt-get install --no-install-recommends -y \
+                binutils git make bc bison openssl curl zip kmod cpio flex libelf-dev \
+                libssl-dev libtfm-dev libc6-dev device-tree-compiler ca-certificates \
+                python3 xz-utils aria2 build-essential ccache pigz parallel jq opam libpcre3-dev
+        else
+            pacman -Syyu --no-confirm git base-devel opam aria2 python3 aria2
+        fi
         echo "::endgroup::"
 
         if [ "${{ inputs.aosp-clang }}" == "true" ]; then
@@ -209,14 +227,7 @@ runs:
         elif [ -n "${{ inputs.other-clang-url }}" ]; then
             echo "::group::Downloading Third-party Clang"
             download_and_extract "${{ inputs.other-clang-url }}" "clang" "$HOME/clang" "${{ inputs.other-clang-branch }}"
-            if [ ! -d "$HOME/clang/bin" ]; then
-                for dir in "$HOME/clang"/*/*; do
-                    if [ -d "$dir" ]; then
-                        mv "$dir"/* "$HOME/clang/" 2>/dev/null || true
-                        break
-                    fi
-                done
-            fi
+            normalize_toolchain_dir "$HOME/clang" "Clang"
             if ! ls "$HOME/clang"/*-linux-* &>/dev/null; then
                 echo "Binutils not found in clang directory. Downloading AOSP GCC"
                 export NEED_GCC=1
@@ -250,26 +261,8 @@ runs:
             echo "::endgroup::"
         fi
 
-        if [ -d "$HOME/gcc-64" ]; then
-            if [ ! -d "$HOME/gcc-64/bin" ]; then
-                for dir in "$HOME/gcc-64"/*/*; do
-                    if [ -d "$dir" ]; then
-                        mv "$dir"/* "$HOME/gcc-64/" 2>/dev/null || true
-                        break
-                    fi
-                done
-            fi
-        fi
-        if [ -d "$HOME/gcc-32" ]; then
-            if [ ! -d "$HOME/gcc-32/bin" ]; then
-                for dir in "$HOME/gcc-32"/*/*; do
-                    if [ -d "$dir" ]; then
-                        mv "$dir"/* "$HOME/gcc-32/" 2>/dev/null || true
-                        break
-                    fi
-                done
-            fi
-        fi
+        normalize_toolchain_dir "$HOME/gcc-64" "GCC64"
+        normalize_toolchain_dir "$HOME/gcc-32" "GCC32"
 
         echo "::group::Pulling Kernel Source"
         git clone --recursive -b "${{ inputs.kernel-branch }}" --depth="${{ inputs.depth }}" "${{ inputs.kernel-url }}" "kernel/${{ inputs.kernel-dir }}"
@@ -307,7 +300,6 @@ runs:
         PATCHLEVEL=$(grep -E '^PATCHLEVEL = ' Makefile | awk '{print $3}')
         SUBLEVEL=$(grep -E '^SUBLEVEL = ' Makefile | awk '{print $3}')
 
-        NONGKI=false
         if [ "$VERSION" -lt 5 ] 2>/dev/null || { [ "$VERSION" -eq 5 ] 2>/dev/null && [ "$PATCHLEVEL" -lt 10 ] 2>/dev/null; }; then
             NONGKI=true
         fi
