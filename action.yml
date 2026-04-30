@@ -562,7 +562,7 @@ runs:
 
     - id: release
       if: inputs.release == 'true'
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       env:
         GITHUB_TOKEN: ${{ inputs.access-token }}
       with:
